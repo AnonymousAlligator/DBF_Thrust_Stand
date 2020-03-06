@@ -2,52 +2,59 @@
 //#include <Wire.h>
 
 // Button setup variables
-#define butPort 0                       // Button port
+#define BUT_PORT 0                          // Button port
 
 // Load cell setup variables
 HX711 leftLoadCell;
-#define leftLoadCellPort 17             // Left load cell port
-#define leftLoadCellClk  16             // Left load cell clock
+#define LEFT_LOAD_CELL_PORT 17              // Left load cell port
+#define LEFT_LOAD_CELL_CLK  16              // Left load cell clock
 HX711 rightLoadCell;
-#define rightLoadCellPort  18           // Right load cell port
-#define rightLoadCellClk  19            // Right load cell clock
-#define loadCellOffset  50682624        // Load cell offset
-#define loadCellDivider  5895655        // Load cell divider
+#define RIGHT_LOAD_CELL_PORT  18            // Right load cell port
+#define RIGHT_LOAD_CELL_CLK  19             // Right load cell clock
+
+#define LOAD_CELL_OFFSET  50682624          // Load cell offset
+#define LOAD_CELL_DIVIDER  5895655          // Load cell divider
 
 // Mauch setup variables
-#define mauchVoltageLine  22            // Mauch voltage line port
-#define mauchCurrentLine  23            // Mauch current line port
-#define noBits  10                      // Bits of precision
-#define voltageDiv  26.65421            // Voltage divider used by Mauch power module
-#define ampPerVolt  30.06317            // Amps per volt of Mauch power module current line
-#define scaledMax  3.3                  // Maximum current and voltage are scaled to
+#define MAUCH_VOLTAGE_LINE  22              // Mauch voltage line port
+#define MAUCH_CURRENT_LINE  23              // Mauch current line port
+#define NO_BITS  10                         // Bits of precision
+#define VOLTAGE_DIV  26.65421               // Voltage divider used by Mauch power module
+#define AMP_PER_VOLT  30.06317              // Amps per volt of Mauch power module current line
+#define SCALED_MAX  3.3                     // Maximum current and voltage are scaled to
 
 // Torque sensor variables
 HX711 torqueSensor;
-#define torquePort  25                  // Torque sensor port
-#define torqueClk  24                   // Torque sensor clock
-#define torqueOffset  50682624          // Load cell offset
-#define torqueDivider  5895655          // Load cell divider
+#define TORQUE_PORT  25                     // Torque sensor port
+#define TORQUE_CLK  24                      // Torque sensor clock
+#define TORQUE_OFFSET  50682624             // Load cell offset
+#define TORQUE_DIVIDER  5895655             // Load cell divider
 
 // ESC control variables
-#define pwmMax  2000                    // Max pulse width in ms
-#define pwmMin  1000                    // Min pulse width in ms
-int currPWM = 0;                        // Initial PWM value
-// Output values
-int butPress = 0;                       // Button state variable
-int loadLeft;                           // Left load sensor value
-int loadRight;                          // Right load sensor value
-int torque;                             // Torque sensor value
+#define PWM_MAX  2000                       // Max pulse width in ms
+#define PWM_MIN  1000                       // Min pulse width in ms
+#define DEFAULT_STEP 10                     // Default step value
+int currPWM = 0;                            // Initial PWM value
 
+// Output values
+int butPress = 0;                           // Button state variable
+float leftLoad;                             // Left load sensor value
+float rightLoad;                            // Right load sensor value
+float torque;                               // Torque sensor value
+
+// Timer
+elapsedMillis sinceBegin = 0;
+
+// Button setup
 void buttonSetup() {
-    pinMode(butPort, INPUT);
+    pinMode(BUT_PORT, INPUT);
     attachInterrupt();
 }
 
 // Mauch port setup
 void mauchPortSetup() {
-    pinMode(mauchVoltageLine, INPUT);
-    pinMode(mauchCurrentLine, INPUT);
+    pinMode(MAUCH_VOLTAGE_LINE, INPUT);
+    pinMode(MAUCH_CURRENT_LINE, INPUT);
 }
 // Mapping for analog read
 float floatMap(float x, float in_min, float in_max, float out_min, float out_max) {
@@ -56,64 +63,64 @@ float floatMap(float x, float in_min, float in_max, float out_min, float out_max
 
 // Obtaining voltage consumed by Mauch power module
 float getMauchVoltages() {
-    int mauchScaledVoltage = analogRead(mauchVoltageLine);
-    return floatMap(mauchScaledVoltage, 0, 2^noBits-1, 0, scaledMax*voltageDiv);
+    int mauchScaledVoltage = analogRead(MAUCH_VOLTAGE_LINE);
+    return floatMap(mauchScaledVoltage, 0, 2^NO_BITS-1, 0, SCALED_MAX*VOLTAGE_DIV);
 }
 
 // Obtaining current consumed by Mauch power module
 float getMauchCurrent() {
-    int mauchScaledCurrent = analogRead(mauchCurrentLine);
-    return floatMap(mauchScaledCurrent, 0, 2^noBits-1, 0, scaledMax*ampPerVolt);
+    int mauchScaledCurrent = analogRead(MAUCH_CURRENT_LINE);
+    return floatMap(mauchScaledCurrent, 0, 2^NO_BITS-1, 0, SCALED_MAX*AMP_PER_VOLT);
 }
 // Load cell setup
 void loadCellSetup() {
     // Left load cell
-    leftLoadCell.begin(loadLeftPort, loadLeftClk);
-    leftLoadCell.set_scale(loadCellDivider);
-    leftLoadCell.set_offset(loadCellOffset);
+    leftLoadCell.begin(LEFT_LOAD_CELL_PORT, LEFT_LOAD_CELL_CLK);
+    leftLoadCell.set_scale(LOAD_CELL_DIVIDER);
+    leftLoadCell.set_offset(LOAD_CELL_OFFSET);
 
     // Right load cell
-    rightLoadCell.begin(loadRightPort, loadRightClk);
-    rightLoadCell.set_scale(loadCellDivider);
-    rightLoadCell.set_offset(loadCellOffset);
+    rightLoadCell.begin(RIGHT_LOAD_CELL_PORT, RIGHT_LOAD_CELL_CLK);
+    rightLoadCell.set_scale(LOAD_CELL_DIVIDER);
+    rightLoadCell.set_offset(LOAD_CELL_OFFSET);
 }
 
 // Left load cell data
 float getLeftLoadCell() {
-    return leftLoadCell.get_units(10);
+    leftLoad = leftLoadCell.get_units(10);
 }
 
 // Right load cell data
 float getRightLoadCell() {
-    return rightLoadCell.get_units(10);
+    rightLoad = rightLoadCell.get_units(10);
 }
 
 // Torque sensor setup
 void torquePortSetup() {
-    torqueSensor.begin(torquePort, torqueClk);
-    torqueSensor.set_scale(torqueDivider);
-    torqueSensor.set_offset(torqueOffset);
+    torqueSensor.begin(TORQUE_PORT, TORQUE_CLK);
+    torqueSensor.set_scale(TORQUE_DIVIDER);
+    torqueSensor.set_offset(TORQUE_OFFSET);
 }
 
 // Torque sensor data
 float getTorque() {
-    return torqueSensor.get_units(10);
+    torque = torqueSensor.get_units(10);
 }
 
 // ESC setup, negative stepVal to step down
 float escStepFunc(int targetPWM, int stepVal) {
     if (stepVal > 0) {
         while (currPWM < targetPWM) {
-            if (currPWM + stepVal > pwmMax) {
-                currPWM = pwmMax;
+            if (currPWM + stepVal >= PWM_MAX) {
+                currPWM = PWM_MAX;
             } else {
                 currPWM = currPWM + stepVal;
             }
         }
     } else {
-        while (currPWM > targetPWM) {
-            if (currPWM + stepVal < pwmMin) {
-                curPWM = pwmMin;
+        while (currPWM >= targetPWM) {
+            if (currPWM + stepVal < PWM_MIN) {
+                curPWM = PWM_MIN;
             } else {
                 currPWM = currPWM + stepVal;
             }
@@ -121,6 +128,36 @@ float escStepFunc(int targetPWM, int stepVal) {
     }
 }
 
+// Manual test mode increases the current PWM by the user defined amount
+void manualTest() {
+    Serial.print("Please enter desired step value: ");
+    if(Serial.available() > 0) {
+        int stepVal = Serial.read();
+    } else {
+        stepVal = DEFAULT_STEP;
+    }
+    int targetPWM = currPWM + stepVal;
+    escStepFunc(targetPWM, stepVal);
+}
+// Ramp test mode continually adds the step value until the max PWM is reached
+void rampTest() {
+    Serial.print("Please enter the desired ramp value: ");
+    if(Serial.available() > 0) {
+        int stepVal = Serial.read();
+    } else {
+        stepVal = DEFAULT_STEP;
+    }
+    escStepFunc(PWM_MAX, stepVal);
+}
+// Hold test mode holds the current state and outputs the sensor values
+void holdTest() {
+    Serial.print("Displaying current sensor values \n"
+                "PWM: "+currPWM+"\n"
+                "Left load: "+leftLoad+"\n"
+                "Right load: "+rightLoad+"\n"
+                "Torque: "+torque+"\n");
+    escStepFunc(currPWM, 0);
+}
 // Setup
 void setup() {
     Serial.begin(38400);
@@ -139,7 +176,7 @@ void infoPrint() {
 
 // Checking if button is pressed
 void buttonState() {
-    if (digitalRead(butPort) == HIGH &&debounce = 256) {
+    if (digitalRead(BUT_PORT) == HIGH &&debounce = 256) {
         butPress = 1;
     }
     delay(250);
