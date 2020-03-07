@@ -36,11 +36,23 @@ HX711 torqueSensor;
 #define DEFAULT_STEP 10                     // Default step value
 int currPWM = 0;                            // Initial PWM value
 
+// Test mode variables
+// Manual
+int stepAmount = 10;
+
+// Ramp
+int rampTarget = 2000;
+
+// Hold
+int holdVal = 0;
+
 // Output values
 int butPress = 0;                           // Button state variable
 float leftLoad;                             // Left load sensor value
 float rightLoad;                            // Right load sensor value
 float torque;                               // Torque sensor value
+float mauchVoltage;                         // Mauch measured voltage
+float mauchCurrent;                         // Mauch measured current
 
 // Timer
 elapsedMillis sinceBegin = 0;
@@ -108,23 +120,23 @@ float getTorque() {
 }
 
 // ESC setup, negative stepVal to step down
+elapsedMillis stepTime;
 float escStepFunc(int targetPWM, int stepVal) {
-    if (stepVal > 0) {
-        while (currPWM < targetPWM) {
+    if (stepTime >= 100) {
+        if (stepVal > 0) {
             if (currPWM + stepVal >= PWM_MAX) {
                 currPWM = PWM_MAX;
             } else {
                 currPWM = currPWM + stepVal;
             }
-        }
-    } else {
-        while (currPWM >= targetPWM) {
+        } else {
             if (currPWM + stepVal < PWM_MIN) {
                 curPWM = PWM_MIN;
             } else {
                 currPWM = currPWM + stepVal;
             }
         }
+        stepTime = 0;
     }
 }
 
@@ -152,9 +164,9 @@ void rampTest() {
 // Hold test mode holds the current state and outputs the sensor values
 void holdTest() {
     Serial.print("Displaying current sensor values \n"
-                "PWM: "+currPWM+"\n"
-                "Left load: "+leftLoad+"\n"
-                "Right load: "+rightLoad+"\n"
+                "PWM: "+currPWM+", "
+                "Left load: "+leftLoad+", "
+                "Right load: "+rightLoad+", "
                 "Torque: "+torque+"\n");
     escStepFunc(currPWM, 0);
 }
@@ -210,22 +222,93 @@ void loop() {
             // Reset to defaults
             Serial.print("---Setting defaults---\n");
             next_sys_mode = SYS_MODE_SET_TEST;
+            test_done = false;
+            test_type = TEST_UNDEFINED;
+
             break;
         case SYS_MODE_SET_TEST:
             if (prev_sys_mode != sys_mode) {
+                // Initial setup
                 Serial.print("---Test Setup---\n");
                 Serial.print("Manual, Ramp, Hold (M, R, H):\t");
             }
 
             if (test_type == TEST_UNDEFINED && Serial.available() > 0) {
-                String usr_ans = Serial.read();
+                switch (Serial.read()) {
+                    case 'm':
+                    case 'M':
+                        test_type = TEST_MANUAL;
+                        Serial.print("Selecting manual test\n");
+                        break;
+                    case 'r':
+                    case 'R':
+                        test_type = TEST_RAMP;
+                        Serial.print("Selecting ramping test\n");
+                        break;
+                    case 'h':
+                    case 'H':
+                        test_type = TEST_HOLD;
+                        Serial.print("Selecting hold throttle test\n");
+                        break;
+                    default:
+                        test_type = TEST_UNDEFINED;
+                        Serial.print("Deselecting test mode\n");
+                        break;
+                }
+                Serial.clear();
             }
+
+            if (test_type != TEST_UNDEFINED) {
+                next_sys_mode = SYS_MODE_RUN_TEST;
+            }
+
             break;
         case SYS_MODE_RUN_TEST:
             if (prev_sys_mode != sys_mode) {
                 Serial.print("---Running Test---\n");
             }
 
+            switch (test_type) {
+                case TEST_MANUAL:
+                    test_done = runManualTest();
+                    break;
+
+                case TEST_RAMP:
+                    test_done = runRampTest();
+                    break;
+
+                case TEST_HOLD:
+                    test_done = runHoldTest();
+                    break;
+
+                default:
+                    test_done = true;
+                    break;
+            }
+
+            if (test_done) {
+                next_sys_mode = SYS_MODE_DONE;
+            }
+
+            break;
+        case SYS_MODE_DONE:
+            if (prev_sys_mode != sys_mode) {
+                Serial.print("---Test Done---\n");
+                Serial.print("Restart? (y): ");
+            }
+
+            if (Serial.available() > 0) {
+                switch (Serial.read()) {
+                    case 'y':
+                    case 'Y':
+                        next_sys_mode = SYS_MODE_NONE;
+                        break;
+                    default:
+                        Serial.print("Restart? (y): ");
+                        break;
+                }
+                Serial.clear();
+            }
             break;
         default:
             next_sys_mode = SYS_MODE_NONE;
@@ -238,3 +321,43 @@ void loop() {
         sys_mode = next_sys_mode;
     }
 }
+
+#define MANUAL_INIT         (0x0000)
+#define MANUAL_USR_IN       (0x0001)
+#define MANUAL_RUN          (0x0002)
+int manualMode = MANUAL_INIT;
+
+bool runManualTest() {
+
+}
+
+#define RAMP_INIT           (0x0000)
+#define RAMP_RUN            (0x0001)
+int rampMode = RAMP_INIT;
+
+bool runRampTest() {
+
+}
+
+#define HOLD_INIT           (0x0000)
+#define HOLD_RUN            (0x0001)
+int holdMode = HOLD_INIT;
+bool askedUsr = false;
+bool gotHoldVal = false;
+
+elapsedMillis testTime;
+bool runHoldTest() {
+    switch (holdMode) {
+        case HOLD_INIT:
+            if (!askedUsr) {
+                Serial.print("Test PWM val (1000-2000): ");
+                askedUsr = true;
+            }
+            if (Serial.available() > 0 && holdVal == 0) {
+                int holdVal = int(Serial.readString().toInt());
+            }
+            break;
+        case HOLD_RUN:
+            break;
+
+    }
