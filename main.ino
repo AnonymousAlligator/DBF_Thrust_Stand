@@ -18,23 +18,31 @@ HX711 rightLoadCell;
 // Mauch setup variables
 #define MAUCH_VOLTAGE_LINE  22              // Mauch voltage line port
 #define MAUCH_CURRENT_LINE  23              // Mauch current line port
-#define NO_BITS  10                         // Bits of precision
-#define VOLTAGE_DIV  26.65421               // Voltage divider used by Mauch power module
-#define AMP_PER_VOLT  30.06317              // Amps per volt of Mauch power module current line
-#define SCALED_MAX  3.3                     // Maximum current and voltage are scaled to
+#define NO_BITS             10              // Bits of precision
+#define VOLTAGE_DIV         26.65421        // Voltage divider used by Mauch power module
+#define AMP_PER_VOLT        30.06317        // Amps per volt of Mauch power module current line
+#define SCALED_MAX          3.3             // Maximum current and voltage are scaled to
 
 // Torque sensor variables
 HX711 torqueSensor;
-#define TORQUE_PORT  25                     // Torque sensor port
-#define TORQUE_CLK  24                      // Torque sensor clock
-#define TORQUE_OFFSET  50682624             // Load cell offset
+#define TORQUE_PORT     25                  // Torque sensor port
+#define TORQUE_CLK      24                  // Torque sensor clock
+#define TORQUE_OFFSET   50682624            // Load cell offset
 #define TORQUE_DIVIDER  5895655             // Load cell divider
 
 // ESC control variables
-#define PWM_MAX  2000                       // Max pulse width in ms
-#define PWM_MIN  1000                       // Min pulse width in ms
-#define DEFAULT_STEP 10                     // Default step value
-int currPWM = 0;                            // Initial PWM value
+#define PWM_MAX         2000                // Max pulse width in ms
+#define PWM_MIN         1000                // Min pulse width in ms
+#define PWM_INIT        0                   // Initial PWM value
+#define DEFAULT_STEP    10                  // Default step value
+int currPWM = PWM_INIT;                     // Current PWM value
+
+// PWM config
+#define PWM_PIN         21
+#define PWM_FREQ        50.0                // Frequency in Hz
+#define PWM_RESOLUTION  16                  // Num bits used in PWM
+
+// Data transfer
 
 // Test mode variables
 // Manual
@@ -140,6 +148,19 @@ float escStepFunc(int targetPWM, int stepVal) {
     }
 }
 
+// Pwm output control
+void pwmSetup() {
+    analogWriteFrequency(ESC_CTRL_PIN, PWM_FREQ);
+    delayMicroseconds(1000);
+    analogWriteResolution(PWM_RESOLUTION);
+    delayMicroseconds(1000);
+}
+
+void pwmOut(float pulseWidth) {
+    float outBits = (pulseWidth * PWM_FREQ / 1000000) * PWM_RESOLUTION;
+    analogWrite(ESC_CTRL_PIN, round(outBits));
+}
+
 // Manual test mode increases the current PWM by the user defined amount
 void manualTest() {
     Serial.print("Please enter desired step value: ");
@@ -162,17 +183,24 @@ void rampTest() {
     escStepFunc(PWM_MAX, stepVal);
 }
 // Hold test mode holds the current state and outputs the sensor values
-void holdTest() {
-    Serial.print("Displaying current sensor values \n"
-                "PWM: "+currPWM+", "
-                "Left load: "+leftLoad+", "
-                "Right load: "+rightLoad+", "
-                "Torque: "+torque+"\n");
-    escStepFunc(currPWM, 0);
+void printSensorHeader() {
+    Serial1.print("Time, PWM, Left load, Right load, Torque, Voltage, Current\n")
+}
+void printSensorInfo() {
+    Serial1.print(
+            time            +","+
+            currPWM         +","+
+            leftLoad        +","+
+            rightLoad       +","+
+            torque          +","+
+            mauchVoltage    +","+
+            mauchCurrent    +"\n"
+            );
 }
 // Setup
 void setup() {
     Serial.begin(38400);
+    Serial1.begin();
     buttonSetup();
     mauchPortSetup();
     loadCellSetup();
@@ -205,94 +233,96 @@ void buttonStateCapture() {
 #define SYS_MODE_NONE           (0x0000)
 #define SYS_MODE_SET_TEST       (0x0001)
 #define SYS_MODE_RUN_TEST       (0x0002)
-int sys_mode = SYS_MODE_NONE;
-int prev_sys_mode = SYS_MODE_NONE;
-int next_sys_mode = SYS_MODE_NONE;
+int sysMode = SYS_MODE_NONE;
+int prevSysMode = SYS_MODE_NONE;
+int nextSysMode = SYS_MODE_NONE;
 
 #define TEST_UNDEFINED          (0x0000)
 #define TEST_MANUAL             (0x0001)
 #define TEST_RAMP               (0x0002)
 #define TEST_HOLD               (0x0003)
-int test_type = TEST_UNDEFINED;
+int testType = TEST_UNDEFINED;
 
 // Main operational loop
 void loop() {
-    switch (sys_mode) {
+    switch (sysMode) {
         case SYS_MODE_NONE:
             // Reset to defaults
             Serial.print("---Setting defaults---\n");
-            next_sys_mode = SYS_MODE_SET_TEST;
-            test_done = false;
-            test_type = TEST_UNDEFINED;
+            nextSysMode = SYS_MODE_SET_TEST;
+            testDone = false;
+            testType = TEST_UNDEFINED;
 
             break;
         case SYS_MODE_SET_TEST:
-            if (prev_sys_mode != sys_mode) {
+            if (prevSysMode != SYS_MODE_SET_TEST) {
                 // Initial setup
                 Serial.print("---Test Setup---\n");
                 Serial.print("Manual, Ramp, Hold (M, R, H):\t");
             }
 
-            if (test_type == TEST_UNDEFINED && Serial.available() > 0) {
+            if (testType == TEST_UNDEFINED && Serial.available() > 0) {
                 switch (Serial.read()) {
                     case 'm':
                     case 'M':
-                        test_type = TEST_MANUAL;
+                        testType = TEST_MANUAL;
                         Serial.print("Selecting manual test\n");
                         break;
                     case 'r':
                     case 'R':
-                        test_type = TEST_RAMP;
+                        testType = TEST_RAMP;
                         Serial.print("Selecting ramping test\n");
                         break;
                     case 'h':
                     case 'H':
-                        test_type = TEST_HOLD;
+                        testType = TEST_HOLD;
                         Serial.print("Selecting hold throttle test\n");
                         break;
                     default:
-                        test_type = TEST_UNDEFINED;
+                        testType = TEST_UNDEFINED;
                         Serial.print("Deselecting test mode\n");
                         break;
                 }
                 Serial.clear();
             }
 
-            if (test_type != TEST_UNDEFINED) {
-                next_sys_mode = SYS_MODE_RUN_TEST;
+            if (testType != TEST_UNDEFINED) {
+                nextSysMode = SYS_MODE_RUN_TEST;
             }
 
             break;
         case SYS_MODE_RUN_TEST:
-            if (prev_sys_mode != sys_mode) {
+            if (prevSysMode != SYS_MODE_RUN_TEST) {
                 Serial.print("---Running Test---\n");
+                printSensorHeader();
             }
 
-            switch (test_type) {
+            switch (testType) {
                 case TEST_MANUAL:
-                    test_done = runManualTest();
+                    testDone = runManualTest();
                     break;
 
                 case TEST_RAMP:
-                    test_done = runRampTest();
+                    testDone = runRampTest();
                     break;
 
                 case TEST_HOLD:
-                    test_done = runHoldTest();
+                    testDone = runHoldTest();
                     break;
 
                 default:
-                    test_done = true;
+                    testDone = true;
                     break;
             }
+            printSensorInfo()
 
-            if (test_done) {
-                next_sys_mode = SYS_MODE_DONE;
+            if (testDone) {
+                nextSysMode = SYS_MODE_DONE;
             }
 
             break;
         case SYS_MODE_DONE:
-            if (prev_sys_mode != sys_mode) {
+            if (prevSysMode != SYS_MODE_DONE) {
                 Serial.print("---Test Done---\n");
                 Serial.print("Restart? (y): ");
             }
@@ -301,7 +331,7 @@ void loop() {
                 switch (Serial.read()) {
                     case 'y':
                     case 'Y':
-                        next_sys_mode = SYS_MODE_NONE;
+                        nextSysMode = SYS_MODE_NONE;
                         break;
                     default:
                         Serial.print("Restart? (y): ");
@@ -311,53 +341,92 @@ void loop() {
             }
             break;
         default:
-            next_sys_mode = SYS_MODE_NONE;
+            nextSysMode = SYS_MODE_NONE;
             break;
     }
 
     // On state change
-    if (sys_mode != next_sys_mode) {
-        prev_sys_mode = sys_mode;
-        sys_mode = next_sys_mode;
+    if (sysMode != nextSysMode) {
+        prevSysMode = sysMode;
+        sysMode = nextSysMode;
     }
 }
 
-#define MANUAL_INIT         (0x0000)
-#define MANUAL_USR_IN       (0x0001)
-#define MANUAL_RUN          (0x0002)
+#define MANUAL_NONE         (0x0000)
+#define MANUAL_INIT         (0x0001)
+#define MANUAL_USR_IN       (0x0002)
+#define MANUAL_RUN          (0x0003)
 int manualMode = MANUAL_INIT;
 
 bool runManualTest() {
 
 }
 
-#define RAMP_INIT           (0x0000)
-#define RAMP_RUN            (0x0001)
+#define RAMP_NONE           (0x0000)
+#define RAMP_INIT           (0x0001)
+#define RAMP_RUN            (0x0002)
 int rampMode = RAMP_INIT;
 
 bool runRampTest() {
 
 }
 
-#define HOLD_INIT           (0x0000)
-#define HOLD_RUN            (0x0001)
-int holdMode = HOLD_INIT;
+#define HOLD_NONE           (0x0000)
+#define HOLD_INIT           (0x0001)
+#define HOLD_RUN            (0x0002)
+int holdMode = HOLD_NONE;
+int prevHoldMode = HOLD_NONE;
+int nextHoldeMode = HOLD_NONE
 bool askedUsr = false;
 bool gotHoldVal = false;
 
 elapsedMillis testTime;
 bool runHoldTest() {
+    bool holdTestDone = false;
     switch (holdMode) {
-        case HOLD_INIT:
-            if (!askedUsr) {
-                Serial.print("Test PWM val (1000-2000): ");
-                askedUsr = true;
-            }
-            if (Serial.available() > 0 && holdVal == 0) {
-                int holdVal = int(Serial.readString().toInt());
-            }
-            break;
-        case HOLD_RUN:
+        case HOLD_NONE:
+            askedUsr = false;
+            gotHoldVal = false;
+            nextHoldeMode = HOLD_INIT;
             break;
 
+        case HOLD_INIT:
+            if (prevHoldMode != HOLD_INIT) {
+                Serial.print("Test PWM val (1000-2000): ");
+                prevHoldMode = HOLD_INIT;
+            }
+            if (Serial.available() > 0 && holdVal == 0) {
+                holdVal = int(Serial.readString().toInt());
+            }
+
+            if (holdVal != 0) {
+                nextHoldMode = HOLD_RUN;
+            }
+            break;
+
+        case HOLD_RUN:
+            if (prevHoldMode != HOLD_RUN) {
+                Serial.print("---Running Test---\n");
+                prevHoldMode = HOLD_RUN;
+                testTime = 0;
+            }
+
+            if (testTime < TEST_HOLD_DURATION) {
+                pwmOut(holdVal);
+            } else {
+                holdTestDone = true;
+                nextHoldMode = HOLD_NONE;
+            }
+            break;
+
+        default:
+            holdMode = HOLD_NONE;
+            askedUsr = false;
+            gotHoldVal = false;
     }
+    if (holdMode != nextHoldeMode) {
+        prevHoldMode = holdMode;
+        holdMode = nextHoldeMode;
+    }
+    return holdTestDone;
+}
