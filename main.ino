@@ -43,6 +43,9 @@ int currPWM = PWM_INIT;                     // Current PWM value
 #define PWM_RESOLUTION  16                  // Num bits used in PWM
 
 // Data transfer
+#define DATA_BAUDRATE   500000
+#define DATA_RTS_PIN    19
+#define DATA_CTS_PIN    18
 
 // Test mode variables
 // Manual
@@ -52,6 +55,7 @@ int stepAmount = 10;
 int rampTarget = 2000;
 
 // Hold
+#define TEST_HOLD_DURATION (2*1000)
 int holdVal = 0;
 
 // Output values
@@ -67,8 +71,8 @@ elapsedMillis sinceBegin = 0;
 
 // Button setup
 void buttonSetup() {
-    pinMode(BUT_PORT, INPUT);
-    attachInterrupt();
+    //pinMode(BUT_PORT, INPUT);
+    //attachInterrupt();
 }
 
 // Mauch port setup
@@ -184,9 +188,16 @@ void rampTest() {
 }
 // Hold test mode holds the current state and outputs the sensor values
 void printSensorHeader() {
-    Serial1.print("Time, PWM, Left load, Right load, Torque, Voltage, Current\n")
+    Serial1.print("Time, PWM, Left load, Right load, Torque, Voltage, Current\n");
 }
 void printSensorInfo() {
+    
+    leftLoad = getLeftLoadCell();
+    rightLoad = getRightLoadCell();
+    torque = getTorque();
+    mauchVoltage = getMauchVoltages();
+    mauchCurrent = getMauchCurrent();
+    
     Serial1.print(
             time            +","+
             currPWM         +","+
@@ -197,14 +208,44 @@ void printSensorInfo() {
             mauchCurrent    +"\n"
             );
 }
+
+void serialPortSetup() {
+    Serial.begin(115200);
+
+    Serial1.begin(DATA_BAUDRATE);
+    Serial1.attachRts(DATA_RTS_PIN);
+    Serial1.attachCts(DATA_CTS_PIN);
+
+    while(!Serial) {
+        flashLed();
+    }
+}
+
+elapsedMillis ledSwitch;
+int ledOn = 0;
+void flashLed() {
+    if (ledSwitch > 500) {
+        if (ledOn) {
+            digitalWrite(13, LOW);
+        } else {
+            digitalWrite(13, HIGH);
+        }
+        ledOn = ~ledOn;
+        ledSwitch = 0;
+    }
+}
+
 // Setup
 void setup() {
-    Serial.begin(38400);
-    Serial1.begin();
     buttonSetup();
+
     mauchPortSetup();
+
     loadCellSetup();
+
     torquePortSetup();
+
+    serialPortSetup();
 }
 
 // Printing information to serial
@@ -314,7 +355,7 @@ void loop() {
                     testDone = true;
                     break;
             }
-            printSensorInfo()
+            printSensorInfo();
 
             if (testDone) {
                 nextSysMode = SYS_MODE_DONE;
@@ -360,6 +401,7 @@ int manualMode = MANUAL_INIT;
 
 bool runManualTest() {
 
+    return true;
 }
 
 #define RAMP_NONE           (0x0000)
@@ -369,6 +411,7 @@ int rampMode = RAMP_INIT;
 
 bool runRampTest() {
 
+    return true;
 }
 
 #define HOLD_NONE           (0x0000)
