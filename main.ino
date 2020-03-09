@@ -52,7 +52,9 @@ int currPWM = PWM_INIT;                     // Current PWM value
 int stepAmount = 10;
 
 // Ramp
+#define STEP_INTERVAL 2000                  // Ramp at 2 second intervals
 int rampTarget = 2000;
+int rampVal = 0;
 
 // Hold
 #define TEST_HOLD_DURATION (2*1000)
@@ -132,9 +134,9 @@ float getTorque() {
 }
 
 // ESC setup, negative stepVal to step down
-elapsedMillis stepTime;
+elapsedMillis stepInterval;
 float escStepFunc(int targetPWM, int stepVal) {
-    if (stepTime >= 100) {
+    if (stepInterval >= STEP_INTERVAL) {
         if (stepVal > 0) {
             if (currPWM + stepVal >= PWM_MAX) {
                 currPWM = PWM_MAX;
@@ -148,7 +150,7 @@ float escStepFunc(int targetPWM, int stepVal) {
                 currPWM = currPWM + stepVal;
             }
         }
-        stepTime = 0;
+        stepInterval = 0;
     }
 }
 
@@ -176,7 +178,8 @@ void manualTest() {
     int targetPWM = currPWM + stepVal;
     escStepFunc(targetPWM, stepVal);
 }
-// Ramp test mode continually adds the step value until the max PWM is reached
+
+/* Ramp test mode continually adds the step value until the max PWM is reached
 void rampTest() {
     Serial.print("Please enter the desired ramp value: ");
     if(Serial.available() > 0) {
@@ -186,6 +189,8 @@ void rampTest() {
     }
     escStepFunc(PWM_MAX, stepVal);
 }
+*/
+
 // Hold test mode holds the current state and outputs the sensor values
 void printSensorHeader() {
     Serial1.print("Time, PWM, Left load, Right load, Torque, Voltage, Current\n");
@@ -407,26 +412,67 @@ bool runManualTest() {
 #define RAMP_NONE           (0x0000)
 #define RAMP_INIT           (0x0001)
 #define RAMP_RUN            (0x0002)
-int rampMode = RAMP_INIT;
+int rampMode = RAMP_NONE;
+int prevRampMode = RAMP_NONE;
+int nextRampMode = RAMP_NONE;
 
 bool runRampTest() {
+    bool rampTestDone = false;
+    switch (rampMode) {
+        case RAMP_NONE:
+            nextRampMode = RAMP_INIT;
+            break;
+        case RAMP_INIT:
+            if (prevRampMode != RAMP_INIT) {
+                Serial.print("Enter ramp value: ")
+                prevRampMode = RAMP_INIT;
+                break;
+            }
+            if (Serial.available() > 0 && rampVal == 0) {
+                rampVal = int(Serial.readString().toInt());
+            }
+            if (rampVal != 0) {
+                nextRampMode = RAMP_RUN;
+            }
+            break;
+        case RAMP_RUN:
+            if (prevRampMode != RAMP_RUN) {
+                Serial.print("---Running Test---\n");
+                prevRampMode = RAMP_RUN;
+                rampInterval = 0;
+            }
+            if (rampInterval >= STEP_INTERVAL && currPWM != PWM_MAX) {
+                escStepFunc(PWM_MAX,rampVal);
+            } else {
+                rampTestDone = true;
+                nextRampMode = RAMP_NONE;
+            }
+            break;
 
-    return true;
+        default:
+            rampMode = RAMP_NONE;
+    }
+    if (rampMode != nextRampMode) {
+        prevRampMode = rampMode;
+        rampMode = nextRampMode;
+    }
+    return rampTestDone;
 }
+
 
 #define HOLD_NONE           (0x0000)
 #define HOLD_INIT           (0x0001)
 #define HOLD_RUN            (0x0002)
 int holdMode = HOLD_NONE;
 int prevHoldMode = HOLD_NONE;
-int nextHoldeMode = HOLD_NONE
+int nextHoldMode = HOLD_NONE
 
 elapsedMillis testTime;
 bool runHoldTest() {
     bool holdTestDone = false;
     switch (holdMode) {
         case HOLD_NONE:
-            nextHoldeMode = HOLD_INIT;
+            nextHoldMode = HOLD_INIT;
             break;
 
         case HOLD_INIT:
@@ -461,9 +507,9 @@ bool runHoldTest() {
         default:
             holdMode = HOLD_NONE;
     }
-    if (holdMode != nextHoldeMode) {
+    if (holdMode != nextHoldMode) {
         prevHoldMode = holdMode;
-        holdMode = nextHoldeMode;
+        holdMode = nextHoldMode;
     }
     return holdTestDone;
 }
