@@ -436,9 +436,14 @@ bool runHoldTest() {
             }
             if (Serial.available() > 0 && holdVal == 0) {
                 holdVal = int(Serial.readString().toInt());
+                if (holdVal < PWM_MIN || holdVal > PWM_MAX) {
+                    Serial.print("\n");
+                    Serial.print("Test PWM val (1000-2000): ");
+                    holdVal = 0;
+                }
             }
 
-            if (holdVal != 0) {
+            if (holdVal => PWM_MIN && holdVal <= PWM_MAX) {
                 nextHoldMode = HOLD_RUN;
             }
             break;
@@ -453,6 +458,7 @@ bool runHoldTest() {
             if (testTime < TEST_HOLD_DURATION) {
                 pwmOut(holdVal);
             } else {
+                pwmOut(PWM_MIN);
                 holdTestDone = true;
                 nextHoldMode = HOLD_NONE;
             }
