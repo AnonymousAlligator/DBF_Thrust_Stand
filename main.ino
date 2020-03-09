@@ -6,14 +6,14 @@
 
 // Load cell setup variables
 HX711 leftLoadCell;
-#define LEFT_LOAD_CELL_PORT 17              // Left load cell port
-#define LEFT_LOAD_CELL_CLK  16              // Left load cell clock
+#define LEFT_LOAD_CELL_PORT     17          // Left load cell port
+#define LEFT_LOAD_CELL_CLK      16          // Left load cell clock
 HX711 rightLoadCell;
-#define RIGHT_LOAD_CELL_PORT  18            // Right load cell port
-#define RIGHT_LOAD_CELL_CLK  19             // Right load cell clock
+#define RIGHT_LOAD_CELL_PORT    18          // Right load cell port
+#define RIGHT_LOAD_CELL_CLK     19          // Right load cell clock
 
-#define LOAD_CELL_OFFSET  50682624          // Load cell offset
-#define LOAD_CELL_DIVIDER  5895655          // Load cell divider
+#define LOAD_CELL_OFFSET        50682624    // Load cell offset
+#define LOAD_CELL_DIVIDER       5895655     // Load cell divider
 
 // Mauch setup variables
 #define MAUCH_VOLTAGE_LINE  22              // Mauch voltage line port
@@ -420,16 +420,12 @@ bool runRampTest() {
 int holdMode = HOLD_NONE;
 int prevHoldMode = HOLD_NONE;
 int nextHoldeMode = HOLD_NONE
-bool askedUsr = false;
-bool gotHoldVal = false;
 
 elapsedMillis testTime;
 bool runHoldTest() {
     bool holdTestDone = false;
     switch (holdMode) {
         case HOLD_NONE:
-            askedUsr = false;
-            gotHoldVal = false;
             nextHoldeMode = HOLD_INIT;
             break;
 
@@ -464,8 +460,6 @@ bool runHoldTest() {
 
         default:
             holdMode = HOLD_NONE;
-            askedUsr = false;
-            gotHoldVal = false;
     }
     if (holdMode != nextHoldeMode) {
         prevHoldMode = holdMode;
