@@ -424,12 +424,16 @@ bool runRampTest() {
             break;
         case RAMP_INIT:
             if (prevRampMode != RAMP_INIT) {
-                Serial.print("Enter ramp value: ")
+                Serial.print("Enter ramp value (1-2000): ")
                 prevRampMode = RAMP_INIT;
                 break;
             }
             if (Serial.available() > 0 && rampVal == 0) {
                 rampVal = int(Serial.readString().toInt());
+                if (rampVal <= 0 || rampVal > PWM_MAX) {
+                    Serial.print("Ramp value is not inside the range, please enter a new value");
+                    rampVal = 0;
+                }
             }
             if (rampVal != 0) {
                 nextRampMode = RAMP_RUN;
